@@ -89,9 +89,9 @@ start = DummyOperator(task_id="start", dag=dag)
 """
     KubernetesPodOperator를 만들기 위해서는 최소 name, namespace, image, task_id가 필요하다.
 """
-yolov5_train_kubepod = KubernetesPodOperator(
-    task_id="yolov5_train_kubepod", # task ID
-    name="yolov5_train_kubepod", # task 이름
+yolov5_kubepod = KubernetesPodOperator(
+    task_id="yolov5_kubepod", # task ID
+    name="yolov5_kubepod", # task 이름
     namespace='airflow', # kubernetes내에서 실행할 namespace
     image='jae99c/yolov5-pipeline', # 사용할 도커 이미지
     cmds=["/bin/sh", "-c"], # container 내부에서 실행할 command
@@ -118,6 +118,6 @@ yolov5_train_kubepod = KubernetesPodOperator(
     dag=dag,
 )
 
-start >> yolov5_train_kubepod
+start >> yolov5_kubepod
 
 
