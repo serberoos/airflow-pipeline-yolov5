@@ -1,2 +1,2 @@
 # airflow-pipeline-yolov5
-airflow yolov5 pipeline
+airflow yolov5 pipeline dag
