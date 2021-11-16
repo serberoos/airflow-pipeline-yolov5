@@ -20,7 +20,8 @@ task_default_args= {
     'email' : ['jae99c@gmail.com'],
     'email_on_retry': False,
     'email_on_failure': True,
-    'execution_timeout': timedelta(hours=1)    
+    'execution_timeout': timedelta(hours=1),
+    'provide_context':True, # XCom 사용    
 }
 
 dag = DAG(
@@ -93,16 +94,13 @@ yolov5_train_kubepod = KubernetesPodOperator(
     name="yolov5_train_kubepod", # task 이름
     namespace='airflow', # kubernetes내에서 실행할 namespace
     image='jae99c/yolov5-pipeline', # 사용할 도커 이미지
-    cmds=["python"], # container 내부에서 실행할 command
+    cmds=["/bin/sh", "-c"], # container 내부에서 실행할 command
+    # /bin/sh -c 를 사용하게 되면 ;을 이용해 여러 명령어를 순차 실행할 수 있다.
+    # 이때 하나의 쌍 따옴표 아래에 ;으로 명령어들이 구분되어야 한다.
+
     arguments=[ # command에 대한 argument
-    "train.py", 
-    "--img", "416",
-    "--batch", "2",
-    "--epochs", "50",
-    "--data", "/usr/src/app/dataset/data.yaml",
-    "--cfg", "./models/yolov5s.yaml",
-    "--weights", "yolov5s.pt", 
-    "--name", "mask_yolo_result",
+    "train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+        detect.py --source /usr/src/app/input/mask.mp4 --weights ../mask_yolo_result"
     ], 
     
     labels={"foo": "bar"},
