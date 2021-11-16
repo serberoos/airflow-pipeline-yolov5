@@ -99,8 +99,8 @@ yolov5_kubepod = KubernetesPodOperator(
     # 이때 하나의 쌍 따옴표 아래에 ;으로 명령어들이 구분되어야 한다.
 
     arguments=[ # command에 대한 argument
-    "train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5"
+    "python train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5"
     ], 
     
     labels={"foo": "bar"},
