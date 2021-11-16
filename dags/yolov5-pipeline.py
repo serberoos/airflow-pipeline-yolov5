@@ -100,7 +100,7 @@ yolov5_kubepod = KubernetesPodOperator(
 
     arguments=[ # command에 대한 argument
     "train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        detect.py --source /usr/src/app/input/mask.mp4 --weights ../mask_yolo_result"
+        detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5"
     ], 
     
     labels={"foo": "bar"},
