@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 from kubernetes.client import models as k8s
 from airflow.models import DAG, Variable
 from airflow.operators.dummy_operator import DummyOperator
+from airflow.operators.python import PythonOperator
 from airflow.kubernetes.secret import Secret
 from airflow.kubernetes.pod import Resources
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator # airflow.contrib.operatos.Kubernetes_pod_operator 는 구버전 | airflow 2.0 버전부터는 지원하지 않는다.
+
 
 dag_id ='yolov5-pipeline'
 
@@ -59,9 +61,6 @@ pod_resources.limit_memory = '40960Mi'
     }
 
 """
-
-
-
 configmaps = [
     k8s.V1EnvFromSource(config_map_ref=k8s.V1ConfigMapEnvSource(name='airflow-airflow-config')), #configmaps 가져오기
 ]
@@ -84,10 +83,29 @@ configmaps = [
     Dockerfile에서 환경 변수로 설정된 값을 Kubernetes configmap 혹은 secret을 통해 설정된 값을 가져오려면 위와 같이 설정이 필요하다.
     만약 위처럼 설정하지 않는다면 환경 변수로 설정된 값을 호출할 수 없다.
 """
-start = DummyOperator(task_id="start", dag=dag)
+start = DummyOperator(task_id="start", dag=dag) # start
 
 """
     KubernetesPodOperator를 만들기 위해서는 최소 name, namespace, image, task_id가 필요하다.
+
+    # input json # dag_run.conf trigger
+    {
+        "DATASET_URL": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
+    }
+    # example
+    {
+        "DATASET_URL": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
+        "train": [
+            "img": "416",
+            "batch": "2",
+            "epochs": "50",
+        ],
+        "detect":[
+            "img": "416",
+            "conf": "0.5"
+        ],
+
+    }
 """
 yolov5_kubepod = KubernetesPodOperator(
     task_id="yolov5_kubepod", # task ID
@@ -99,9 +117,11 @@ yolov5_kubepod = KubernetesPodOperator(
     # 이때 하나의 쌍 따옴표 아래에 ;으로 명령어들이 구분되어야 한다.
 
     arguments=[ # command에 대한 argument
-    "python train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5"
+    'curl -L "{{ dag_run.conf.DATASET_URL }}" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip; \
+        python train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5'
     ], 
+
     
     labels={"foo": "bar"},
     in_cluster=True,
