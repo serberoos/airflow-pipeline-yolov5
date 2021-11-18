@@ -89,12 +89,10 @@ start = DummyOperator(task_id="start", dag=dag) # start
     KubernetesPodOperator를 만들기 위해서는 최소 name, namespace, image, task_id가 필요하다.
 
     # input json # dag_run.conf trigger
-    {
-        "DATASET_URL": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
-    }
+    {"dataset_url":"https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW"}
     # example
     {
-        "DATASET_URL": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
+        "dataset_url": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
         "train": [
             "img": "416",
             "batch": "2",
@@ -107,6 +105,8 @@ start = DummyOperator(task_id="start", dag=dag) # start
 
     }
 """
+dataset_curl_url = "{{ dag_run.conf['dataset_url'] }}"
+
 yolov5_kubepod = KubernetesPodOperator(
     task_id="yolov5_kubepod", # task ID
     name="yolov5_kubepod", # task 이름
@@ -116,11 +116,13 @@ yolov5_kubepod = KubernetesPodOperator(
     # /bin/sh -c 를 사용하게 되면 ;을 이용해 여러 명령어를 순차 실행할 수 있다.
     # 이때 하나의 쌍 따옴표 아래에 ;으로 명령어들이 구분되어야 한다.
 
-    arguments=[ # command에 대한 argument
-    'curl -L "{{ dag_run.conf.DATASET_URL }}" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip; \
+    # provide_content=True,
+    # env ={'dataset_curl_url': '{{dag_run.conf["dataset_url"]}}'},
+    arguments=['curl -L "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip; \
         python train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5'
-    ], 
+        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+        python upload_to_google_drive.py' ], 
+        # command에 대한 argument
 
     
     labels={"foo": "bar"},
