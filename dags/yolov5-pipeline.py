@@ -9,7 +9,8 @@ from airflow.operators.python import PythonOperator
 from airflow.kubernetes.secret import Secret
 from airflow.kubernetes.pod import Resources
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator # airflow.contrib.operatos.Kubernetes_pod_operator 는 구버전 | airflow 2.0 버전부터는 지원하지 않는다.
-
+from airflow.kubernetes.volume import Volume
+from airflow.kubernetes.volume_mount import VolumeMount
 
 dag_id ='yolov5-pipeline'
 
@@ -17,14 +18,26 @@ task_default_args= {
     'owner': 'airflow', # owner
     'retries': 3, # 재시도 횟수
     'retry_delay': timedelta(minutes=5), # 재 시작 딜레이
-    'start_date': datetime(2021, 11, 10), # 시작 일
-    'depends_on_past': False,
-    'email' : ['jae99c@gmail.com'],
+    'start_date': datetime(2019, 11, 20), # 시작 일
+    'depends_on_past': False, # 이전 날짜의 task 인스턴스 중에서 동일한 task 인스턴스가 실패한 경우 실행되지 않고 대기.
+    'email' : ['airflow@example.com'],
     'email_on_retry': False,
     'email_on_failure': True,
     'execution_timeout': timedelta(hours=1),
     'provide_context':True, # XCom 사용    
 }
+# 컨테이너와 volume_mount
+yolo_volume_mount = VolumeMount(name='yolo-volume', 
+                            mount_path='/usr/src/app/yolo_pipeline_volume/',
+                            sub_path=None,
+                            read_only=False)
+volume_config = {
+    'persistentVolumeClaim':
+        {
+            'claimName': 'airflow-data-pvc' # PVC 명
+        }
+}
+yolo_volume = Volume(name='yolo-volume', configs=volume_config) #volume 생성
 
 dag = DAG(
     dag_id=dag_id, # 고유 식별자
@@ -61,9 +74,9 @@ pod_resources.limit_memory = '40960Mi'
     }
 
 """
-configmaps = [
-    k8s.V1EnvFromSource(config_map_ref=k8s.V1ConfigMapEnvSource(name='airflow-airflow-config')), #configmaps 가져오기
-]
+# configmaps = [
+#     k8s.V1EnvFromSource(config_map_ref=k8s.V1ConfigMapEnvSource(name='airflow-airflow-config')), #configmaps 가져오기
+# ]
 
 """
     configmaps = [
@@ -118,13 +131,17 @@ yolov5_kubepod = KubernetesPodOperator(
 
     # provide_content=True,
     # env ={'dataset_curl_url': '{{dag_run.conf["dataset_url"]}}'},
-    arguments=['curl -L "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip; \
-        python train.py --img 416 --batch 2 --epochs 50 --data /usr/src/app/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        python detect.py --source /usr/src/app/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
-        python upload_to_google_drive.py' ], 
+    arguments=['python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/app/yolo_pipeline_volume/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+        cp -r /usr/src/app/runs/train/mask_yolo_result /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result; \
+        python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+        cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4; \
+        python /usr/src/app/yolo_pipeline_volume/upload_to_google_drive.py; sleep 9999999999' ], 
         # command에 대한 argument
+#         python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+#         python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+#         python upload_to_google_drive.py; 
 
-    
+# curl -L "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip;
     labels={"foo": "bar"},
     in_cluster=True,
     # secrets=[
@@ -135,8 +152,10 @@ yolov5_kubepod = KubernetesPodOperator(
     is_delete_operator_pod=True, # 포트 삭제 여부 false로 설정하면 PodOperator가 동작하고 pod가 삭제되지 않아 메모리를 점유하고 있을 수 있다.
     get_logs=True, # Airflow 환경에서 Pod 동작 log 출력여부
     resources=pod_resources, #resource 설정
-    env_from=configmaps, #configmap
+    # env_from=configmaps, #configmap
     startup_timeout_seconds=500, # default timeout은 120초인데, 이미지를 pull받는 시간 동안 초과될 수가 있음.
+    volumes=[yolo_volume],
+    volume_mounts=[yolo_volume_mount],
     dag=dag,
 )
 
