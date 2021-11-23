@@ -120,9 +120,9 @@ start = DummyOperator(task_id="start", dag=dag) # start
 """
 dataset_curl_url = "{{ dag_run.conf['dataset_url'] }}"
 
-yolov5_kubepod = KubernetesPodOperator(
-    task_id="yolov5_kubepod", # task ID
-    name="yolov5_kubepod", # task 이름
+yolov5_train_kubepod = KubernetesPodOperator(
+    task_id="yolov5_train_kubepod", # task ID
+    name="yolov5_train_kubepod", # task 이름
     namespace='airflow', # kubernetes내에서 실행할 namespace
     image='jae99c/yolov5-pipeline', # 사용할 도커 이미지
     cmds=["/bin/sh", "-c"], # container 내부에서 실행할 command
@@ -132,16 +132,9 @@ yolov5_kubepod = KubernetesPodOperator(
     # provide_content=True,
     # env ={'dataset_curl_url': '{{dag_run.conf["dataset_url"]}}'},
     arguments=['python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/app/yolo_pipeline_volume/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-        cp -r /usr/src/app/runs/train/mask_yolo_result /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result; \
-        python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
-        cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4; \
-        python /usr/src/app/yolo_pipeline_volume/upload_to_google_drive.py; sleep 9999999999' ], 
+        cp -r /usr/src/app/runs/train/mask_yolo_result /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result'], 
         # command에 대한 argument
-#         python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
-#         python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/runs/train/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
-#         python upload_to_google_drive.py; 
-
-# curl -L "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip;
+    
     labels={"foo": "bar"},
     in_cluster=True,
     # secrets=[
@@ -159,6 +152,53 @@ yolov5_kubepod = KubernetesPodOperator(
     dag=dag,
 )
 
-start >> yolov5_kubepod
+yolov5_detect_kubepod = KubernetesPodOperator(
+    task_id="yolov5_detect_kubepod",
+    name="yolov5_detect_kubepod",
+    namespace='airflow',
+    image='jae99c/yolov5-pipeline',
+    cmds=["/bin/sh", "-c"],
+    arguments=['python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+        cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4'], 
+    labels={"foo": "bar"},
+    in_cluster=True,
+    is_delete_operator_pod=True,
+    get_logs=True, 
+    resources=pod_resources,
+    startup_timeout_seconds=500, 
+    volumes=[yolo_volume],
+    volume_mounts=[yolo_volume_mount],
+    dag=dag,
+)
+
+upload_to_google_drive_kubepod = KubernetesPodOperator(
+    task_id="upload_to_google_drive_kubepod", 
+    name="upload_to_google_drive_kubepod",
+    namespace='airflow',
+    image='jae99c/yolov5-pipeline', 
+    cmds=["/bin/sh", "-c"], 
+    arguments=['python /usr/src/app/yolo_pipeline_volume/upload_to_google_drive.py' ], 
+    labels={"foo": "bar"},
+    in_cluster=True,
+    is_delete_operator_pod=True, 
+    get_logs=True, 
+    resources=pod_resources,
+    startup_timeout_seconds=500,
+    volumes=[yolo_volume],
+    volume_mounts=[yolo_volume_mount],
+    dag=dag,
+)
+"""
+:: backup ::
+    arguments=['python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/app/yolo_pipeline_volume/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+        cp -r /usr/src/app/runs/train/mask_yolo_result /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result; \
+        python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+        cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4; \
+        python /usr/src/app/yolo_pipeline_volume/upload_to_google_drive.py' ], 
+    ---
+    curl -L "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW" > roboflow.zip; unzip roboflow.zip; rm roboflow.zip;
+"""
+
+start >> yolov5_train_kubepod >> yolov5_detect_kubepod >> upload_to_google_drive_kubepod
 
 
