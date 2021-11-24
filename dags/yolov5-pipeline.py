@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 from kubernetes.client import models as k8s
 from airflow.models import DAG, Variable
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.python import PythonOperator
 from airflow.kubernetes.secret import Secret
 from airflow.kubernetes.pod import Resources
 from airflow.providers.cncf.kubernetes.operators.kubernetes_pod import KubernetesPodOperator # airflow.contrib.operatos.Kubernetes_pod_operator 는 구버전 | airflow 2.0 버전부터는 지원하지 않는다.
@@ -13,6 +12,14 @@ from airflow.kubernetes.volume import Volume
 from airflow.kubernetes.volume_mount import VolumeMount
 
 dag_id ='yolov5-pipeline'
+
+
+# train_opt_img = "{{ dag_run.conf['train_img'] }}"
+# train_opt_batch = "{{ dag_run.conf['train_batch'] }}"
+# train_opt_epochs = "{{ dag_run.conf['train_epochs'] }}"
+# detect_opt_img = "{{ dag_run.conf['detect_img'] }}"
+# detect_opt_conf = "{{ dag_run.conf['detect_conf'] }}"
+
 
 task_default_args= {
     'owner': 'airflow', # owner
@@ -43,7 +50,18 @@ dag = DAG(
     dag_id=dag_id, # 고유 식별자
     description='ML pipeline of YOLOv5', # 설명
     default_args=task_default_args,
+    render_template_as_native_obj=True, # 템플릿이 파이썬 코드를
     schedule_interval='5 16 * * *', # DAG가 trigger될 빈도를 정의한다.
+
+    # params={
+    #     "train_img": "416",
+    #     "train_img": "416",
+    #     "train_batch": "2",
+    #     "train_epochs": "1",
+    #     "detect_img": "416",
+    #     "detect_conf": "0.5"
+    # },
+
     max_active_runs=1
 )
 
@@ -102,23 +120,20 @@ start = DummyOperator(task_id="start", dag=dag) # start
     KubernetesPodOperator를 만들기 위해서는 최소 name, namespace, image, task_id가 필요하다.
 
     # input json # dag_run.conf trigger
-    {"dataset_url":"https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW"}
-    # example
+
+    {"train_img": "416", "train_batch": "2", "train_epochs": "1", "detect_img": "416", "detect_conf": "0.5"} 
     {
-        "dataset_url": "https://public.roboflow.com/ds/qn6lmo8rhA?key=EkVdFFNjtW",
-        "train": [
+        "train": {
             "img": "416",
             "batch": "2",
-            "epochs": "50",
-        ],
-        "detect":[
+            "epochs": "1"
+        },
+        "detect":{
             "img": "416",
             "conf": "0.5"
-        ],
-
+        }
     }
 """
-dataset_curl_url = "{{ dag_run.conf['dataset_url'] }}"
 
 yolov5_train_kubepod = KubernetesPodOperator(
     task_id="yolov5_train_kubepod", # task ID
@@ -128,10 +143,17 @@ yolov5_train_kubepod = KubernetesPodOperator(
     cmds=["/bin/sh", "-c"], # container 내부에서 실행할 command
     # /bin/sh -c 를 사용하게 되면 ;을 이용해 여러 명령어를 순차 실행할 수 있다.
     # 이때 하나의 쌍 따옴표 아래에 ;으로 명령어들이 구분되어야 한다.
+    
 
     # provide_content=True,
     # env ={'dataset_curl_url': '{{dag_run.conf["dataset_url"]}}'},
-    arguments=['python train.py --img 416 --batch 2 --epochs 1 --data /usr/src/app/yolo_pipeline_volume/dataset/data.yaml --cfg ./models/yolov5s.yaml --weights yolov5s.pt --name mask_yolo_result; \
+    arguments=['python train.py --img {{ dag_run.conf.train_img | d("416") }} \
+        --batch {{ dag_run.conf.train_batch | d("2") }} \
+        --epochs {{ dag_run.conf.train_epochs | d("1") }} \
+        --data /usr/src/app/yolo_pipeline_volume/dataset/data.yaml \
+        --cfg ./models/yolov5s.yaml \
+        --weights yolov5s.pt \
+        --name mask_yolo_result; \
         cp -r /usr/src/app/runs/train/mask_yolo_result /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result'], 
         # command에 대한 argument
     
@@ -158,7 +180,10 @@ yolov5_detect_kubepod = KubernetesPodOperator(
     namespace='airflow',
     image='jae99c/yolov5-pipeline',
     cmds=["/bin/sh", "-c"],
-    arguments=['python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt --img 416 --conf 0.5; \
+    arguments=['python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 \
+        --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt \
+        --img {{ dag_run.conf.detect_img | d("416") }} \
+        --conf {{ dag_run.conf.detect_conf | d("0.5"); }} \
         cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4'], 
     labels={"foo": "bar"},
     in_cluster=True,
