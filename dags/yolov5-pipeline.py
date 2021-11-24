@@ -183,7 +183,7 @@ yolov5_detect_kubepod = KubernetesPodOperator(
     arguments=['python detect.py --source /usr/src/app/yolo_pipeline_volume/input/mask.mp4 \
         --weights /usr/src/app/yolo_pipeline_volume/train_result/mask_yolo_result/weights/best.pt \
         --img {{ dag_run.conf.detect_img | d("416") }} \
-        --conf {{ dag_run.conf.detect_conf | d("0.5"); }} \
+        --conf {{ dag_run.conf.detect_conf | d("0.5") }}; \
         cp /usr/src/app/runs/detect/exp/mask.mp4 /usr/src/app/yolo_pipeline_volume/detect_result/mask.mp4'], 
     labels={"foo": "bar"},
     in_cluster=True,
